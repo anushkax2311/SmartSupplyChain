@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useShipmentSocket } from '../hooks/useShipmentSocket'
 import ShipmentTable from '../components/ShipmentTable'
 import MapView from '../components/MapView'
@@ -7,8 +7,17 @@ import PredictionPanel from '../components/PredictionPanel'
 import RouteComparison from '../components/RouteComparison'
 import DecisionPanel from '../components/DecisionPanel'
 import ExplanationPanel from '../components/ExplanationPanel'
+import SimulationPanel from '../components/SimulationPanel'
+import CascadeImpact from '../components/CascadeImpact'
+import ChatAssistant from '../components/ChatAssistant'
+import AlertsPanel from '../components/AlertsPanel'
+import AnalyticsDashboard from '../components/AnalyticsDashboard'
+import ToastNotifications, { useToasts } from '../components/ToastNotifications'
 import { routingService } from '../services/api'
-import { Wifi, WifiOff, Truck, Brain, Radio, Route, AlertTriangle, Zap } from 'lucide-react'
+import {
+  WifiOff, Truck, Brain, Radio, Route, AlertTriangle,
+  Zap, FlaskConical, MessageSquare, Activity, Bell, BarChart3
+} from 'lucide-react'
 
 function formatTime(date) {
   if (!date) return ''
@@ -16,26 +25,53 @@ function formatTime(date) {
 }
 
 const LEFT_PANELS = [
-  { id: 'table',    label: 'Shipments', icon: Truck },
-  { id: 'ai',       label: 'AI Predict', icon: Brain },
-  { id: 'routes',   label: 'Routes', icon: Route },
-  { id: 'decision', label: 'Decision', icon: AlertTriangle },
-  { id: 'explain',  label: 'AI Explain', icon: Zap },
+  { id: 'table',     label: 'Shipments', icon: Truck          },
+  { id: 'ai',        label: 'Predict',   icon: Brain          },
+  { id: 'routes',    label: 'Routes',    icon: Route          },
+  { id: 'decision',  label: 'Decision',  icon: AlertTriangle  },
+  { id: 'explain',   label: 'Explain',   icon: Zap            },
+  { id: 'simulate',  label: 'Simulate',  icon: FlaskConical   },
+  { id: 'impact',    label: 'Impact',    icon: Activity       },
+  { id: 'chat',      label: 'AI Chat',   icon: MessageSquare  },
+  { id: 'alerts',    label: 'Alerts',    icon: Bell           },
+  { id: 'analytics', label: 'Analytics', icon: BarChart3      },
 ]
 
-export default function Dashboard() {
-  const { shipments, connected, lastUpdated, reconnectCount } = useShipmentSocket()
-  const [selectedId, setSelectedId]     = useState(null)
-  const [activePanel, setActivePanel]   = useState('table')
-  const [optimizeFor, setOptimizeFor]   = useState('balanced')
+const PANEL_COLORS = {
+  table:'text-[#00d4a0]', ai:'text-violet-400', routes:'text-blue-400',
+  decision:'text-amber-400', explain:'text-violet-400', simulate:'text-[#00d4a0]',
+  impact:'text-red-400', chat:'text-violet-400', alerts:'text-amber-400',
+  analytics:'text-blue-400',
+}
 
-  // Phase 3 state
-  const [routeData, setRouteData]       = useState(null)
-  const [routeLoading, setRouteLoading] = useState(false)
-  const [decision, setDecision]         = useState(null)
+export default function Dashboard() {
+  const { shipments, connected, lastUpdated, reconnectCount, liveAlerts } = useShipmentSocket()
+  const { toasts, addToasts, dismiss } = useToasts()
+
+  const [selectedId, setSelectedId]   = useState(null)
+  const [activePanel, setActivePanel] = useState('table')
+  const [optimizeFor, setOptimizeFor] = useState('balanced')
+
+  // Phase 3
+  const [routeData, setRouteData]             = useState(null)
+  const [routeLoading, setRouteLoading]       = useState(false)
+  const [decision, setDecision]               = useState(null)
   const [decisionLoading, setDecisionLoading] = useState(false)
-  const [explanation, setExplanation]   = useState(null)
+  const [explanation, setExplanation]         = useState(null)
   const [explainLoading, setExplainLoading]   = useState(false)
+
+  // Phase 4
+  const [simResult, setSimResult] = useState(null)
+
+  // Phase 5: pipe live alerts → toasts
+  useEffect(() => {
+    if (liveAlerts?.length > 0) addToasts(liveAlerts)
+  }, [liveAlerts, addToasts])
+
+  // Unread alerts badge count
+  const unreadCount = useMemo(() =>
+    liveAlerts?.filter(a => !a.acknowledged)?.length || 0
+  , [liveAlerts])
 
   const selected = shipments.find(s => s.id === selectedId) || null
 
@@ -49,7 +85,6 @@ export default function Dashboard() {
 
   const handleSelect = useCallback((id) => {
     setSelectedId(id)
-    // Clear previous route data when selection changes
     setRouteData(null)
     setDecision(null)
     setExplanation(null)
@@ -58,14 +93,9 @@ export default function Dashboard() {
   const handleComputeRoutes = useCallback(async () => {
     if (!selectedId) return
     setRouteLoading(true)
-    try {
-      const data = await routingService.getRoute(selectedId, optimizeFor)
-      setRouteData(data)
-    } catch (e) {
-      console.error('Route fetch failed', e)
-    } finally {
-      setRouteLoading(false)
-    }
+    try { setRouteData(await routingService.getRoute(selectedId, optimizeFor)) }
+    catch (e) { console.error(e) }
+    finally { setRouteLoading(false) }
   }, [selectedId, optimizeFor])
 
   const handleDecision = useCallback(async () => {
@@ -74,37 +104,31 @@ export default function Dashboard() {
     try {
       const data = await routingService.triggerReroute(selectedId, optimizeFor)
       setDecision(data.decision)
-      // Also update route data from decision response
-      if (data.active_route && data.alternative_route) {
-        setRouteData(prev => ({
-          ...prev,
-          route_a: data.active_route,
-          route_b: data.alternative_route,
-        }))
-      }
-    } catch (e) {
-      console.error('Decision failed', e)
-    } finally {
-      setDecisionLoading(false)
-    }
+      if (data.active_route && data.alternative_route)
+        setRouteData(prev => ({ ...prev, route_a: data.active_route, route_b: data.alternative_route }))
+    } catch (e) { console.error(e) }
+    finally { setDecisionLoading(false) }
   }, [selectedId, optimizeFor])
 
   const handleExplain = useCallback(async () => {
     if (!selectedId) return
     setExplainLoading(true)
-    try {
-      const data = await routingService.explainRoute(selectedId, optimizeFor)
-      setExplanation(data)
-    } catch (e) {
-      console.error('Explanation failed', e)
-    } finally {
-      setExplainLoading(false)
-    }
+    try { setExplanation(await routingService.explainRoute(selectedId, optimizeFor)) }
+    catch (e) { console.error(e) }
+    finally { setExplainLoading(false) }
   }, [selectedId, optimizeFor])
+
+  const handleSimResult = (result) => {
+    setSimResult(result)
+    setActivePanel('impact')
+  }
 
   return (
     <div className="min-h-screen bg-[#0b0f1a] flex flex-col">
-      {/* ── Header ── */}
+      {/* Toast notifications */}
+      <ToastNotifications toasts={toasts} onDismiss={dismiss} />
+
+      {/* Header */}
       <header className="border-b border-white/[0.06] px-5 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-1.5 bg-[#00d4a0]/10 rounded-lg">
@@ -112,26 +136,40 @@ export default function Dashboard() {
           </div>
           <div>
             <h1 className="text-sm font-semibold text-slate-100 tracking-wide">Smart Supply Chain</h1>
-            <p className="text-xs text-slate-600">Phase 3 · Routing Engine + Decision Intelligence</p>
+            <p className="text-xs text-slate-600">Phase 5 · Self-Healing Control Tower</p>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Optimize selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-600 hidden sm:block">Optimize:</span>
-            <select
-              value={optimizeFor}
-              onChange={e => setOptimizeFor(e.target.value)}
-              className="bg-[#1a2235] border border-white/[0.08] text-xs text-slate-300 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#00d4a0]/40"
-            >
-              <option value="balanced">⚖ Balanced</option>
-              <option value="time">⚡ Speed</option>
-              <option value="cost">💰 Cost</option>
-            </select>
+          {/* Self-heal indicator */}
+          <div className="hidden sm:flex items-center gap-1.5 bg-[#00d4a0]/5 border border-[#00d4a0]/15 rounded-lg px-2 py-1">
+            <Zap size={11} className="text-[#00d4a0]" />
+            <span className="text-xs text-[#00d4a0]">Self-Healing Active</span>
           </div>
 
-          {/* Live indicator */}
+          <select
+            value={optimizeFor}
+            onChange={e => setOptimizeFor(e.target.value)}
+            className="bg-[#1a2235] border border-white/[0.08] text-xs text-slate-300 rounded-lg px-2 py-1.5 focus:outline-none"
+          >
+            <option value="balanced">⚖ Balanced</option>
+            <option value="time">⚡ Speed</option>
+            <option value="cost">💰 Cost</option>
+          </select>
+
+          {/* Alerts bell */}
+          <button
+            onClick={() => setActivePanel('alerts')}
+            className="relative p-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-colors"
+          >
+            <Bell size={14} className="text-slate-400" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white text-xs flex items-center justify-center font-bold pulse-dot">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+
           <div className="flex items-center gap-1.5">
             {connected
               ? <><Radio size={12} className="text-[#00d4a0] pulse-dot" /><span className="text-xs text-[#00d4a0]">Live</span></>
@@ -144,7 +182,6 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* ── Main ── */}
       <main className="flex-1 p-4 flex flex-col gap-4 overflow-hidden">
         <StatsBar stats={stats} />
 
@@ -167,107 +204,72 @@ export default function Dashboard() {
         {shipments.length > 0 && (
           <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0">
 
-            {/* ── Left panel ── */}
+            {/* Left panel */}
             <div className="flex flex-col min-h-0 bg-[#111827] rounded-xl border border-white/[0.06] p-4">
-              {/* Tab bar */}
+              {/* Scrollable tab bar */}
               <div className="flex gap-1 mb-3 overflow-x-auto pb-1">
                 {LEFT_PANELS.map(({ id, label, icon: Icon }) => (
                   <button
                     key={id}
                     onClick={() => setActivePanel(id)}
                     className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all shrink-0 ${
-                      activePanel === id
-                        ? id === 'explain' ? 'bg-[#1a2235] text-violet-400'
-                        : id === 'decision' ? 'bg-[#1a2235] text-amber-400'
-                        : id === 'routes' ? 'bg-[#1a2235] text-blue-400'
-                        : id === 'ai' ? 'bg-[#1a2235] text-violet-400'
-                        : 'bg-[#1a2235] text-[#00d4a0]'
-                        : 'text-slate-500 hover:text-slate-300'
+                      activePanel === id ? `bg-[#1a2235] ${PANEL_COLORS[id]}` : 'text-slate-500 hover:text-slate-300'
                     }`}
                   >
-                    <Icon size={11} /> {label}
-                    {id === 'routes' && selected && (
-                      <span className="ml-1 text-xs bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-full">{selected.id}</span>
+                    <Icon size={11} />
+                    {label}
+                    {id === 'alerts' && unreadCount > 0 && (
+                      <span className="bg-red-500 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center font-bold">
+                        {unreadCount > 9 ? '9' : unreadCount}
+                      </span>
                     )}
+                    {id === 'impact' && simResult && <span className="bg-red-500/20 text-red-400 text-xs px-1 rounded-full">!</span>}
                   </button>
                 ))}
               </div>
 
-              {/* Panel content */}
               <div className="flex-1 overflow-y-auto min-h-0">
-                {activePanel === 'table' && (
-                  <ShipmentTable
-                    shipments={shipments}
-                    selectedId={selectedId}
-                    onSelect={id => { handleSelect(id); setActivePanel('ai') }}
-                  />
-                )}
-
-                {activePanel === 'ai' && (
-                  <PredictionPanel shipment={selected} />
-                )}
-
-                {activePanel === 'routes' && (
+                {activePanel === 'table'     && <ShipmentTable shipments={shipments} selectedId={selectedId} onSelect={id => { handleSelect(id); setActivePanel('ai') }} />}
+                {activePanel === 'ai'        && <PredictionPanel shipment={selected} />}
+                {activePanel === 'routes'    && (
                   <div className="flex flex-col gap-3">
-                    {/* Compute button */}
-                    <button
-                      onClick={handleComputeRoutes}
-                      disabled={!selectedId || routeLoading || selected?.status === 'Delivered'}
+                    <button onClick={handleComputeRoutes} disabled={!selectedId || routeLoading || selected?.status === 'Delivered'}
                       className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
                         selectedId && selected?.status !== 'Delivered'
                           ? 'bg-blue-500/10 border border-blue-500/30 text-blue-400 hover:bg-blue-500/20'
                           : 'bg-white/[0.03] border border-white/[0.06] text-slate-600 cursor-not-allowed'
-                      }`}
-                    >
+                      }`}>
                       <Route size={14} className={routeLoading ? 'animate-spin' : ''} />
                       {routeLoading ? 'Computing…' : selectedId ? `Compute Routes for ${selectedId}` : 'Select a shipment first'}
                     </button>
                     <RouteComparison routeData={routeData} loading={routeLoading} />
                   </div>
                 )}
-
-                {activePanel === 'decision' && (
-                  <DecisionPanel
-                    decision={decision}
-                    loading={decisionLoading}
-                    shipmentId={selectedId}
-                    onTrigger={handleDecision}
-                  />
-                )}
-
-                {activePanel === 'explain' && (
-                  <ExplanationPanel
-                    data={explanation}
-                    loading={explainLoading}
-                    shipmentId={selectedId}
-                    onGenerate={handleExplain}
-                  />
-                )}
+                {activePanel === 'decision'  && <DecisionPanel decision={decision} loading={decisionLoading} shipmentId={selectedId} onTrigger={handleDecision} />}
+                {activePanel === 'explain'   && <ExplanationPanel data={explanation} loading={explainLoading} shipmentId={selectedId} onGenerate={handleExplain} />}
+                {activePanel === 'simulate'  && <SimulationPanel onResult={handleSimResult} onLoading={() => {}} />}
+                {activePanel === 'impact'    && <CascadeImpact result={simResult} />}
+                {activePanel === 'chat'      && <ChatAssistant />}
+                {activePanel === 'alerts'    && <AlertsPanel liveAlerts={liveAlerts} />}
+                {activePanel === 'analytics' && <AnalyticsDashboard />}
               </div>
             </div>
 
-            {/* ── Right: Map ── */}
+            {/* Right: Map */}
             <div className="flex flex-col min-h-0 bg-[#111827] rounded-xl border border-white/[0.06] p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Live Map</h2>
-                <div className="flex items-center gap-3 text-xs text-slate-600 flex-wrap">
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />In Transit</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Med. Risk</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />High Risk</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />Delivered</span>
-                  {routeData && <>
-                    <span className="flex items-center gap-1"><span className="w-8 border-t-2 border-blue-400 inline-block" />Route A</span>
-                    <span className="flex items-center gap-1"><span className="w-8 border-t-2 border-dashed border-violet-400 inline-block" />Route B</span>
-                  </>}
+                <div className="flex items-center gap-2 flex-wrap text-xs text-slate-600">
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400" />Transit</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400" />Med</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400" />High</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400" />Done</span>
                 </div>
               </div>
               <div className="flex-1 min-h-[400px]">
-                <MapView
-                  shipments={shipments}
-                  selectedId={selectedId}
+                <MapView shipments={shipments} selectedId={selectedId}
                   onSelect={id => { handleSelect(id); setActivePanel('ai') }}
-                  routeData={routeData}
-                />
+                  routeData={routeData} />
               </div>
             </div>
 

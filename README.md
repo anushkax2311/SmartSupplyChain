@@ -1,4 +1,4 @@
-# Smart Supply Chain Dashboard 
+# Smart Supply Chain Dashboard — Phase 1
 
 A real-time shipment tracking dashboard with FastAPI backend and React frontend.
 
