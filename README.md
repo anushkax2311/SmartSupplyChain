@@ -1,4 +1,4 @@
-# ChainGuard AI — Smart Supply Chain Dashboard
+# RouteSense — Smart Supply Chain Dashboard
 
 > **An AI-powered, self-healing supply chain control tower built for the Google Solution Challenge 2026.**
 > Transforms reactive logistics into a predictive, intelligent, and autonomous system.
@@ -509,16 +509,6 @@ npm install                        # picks up any new packages
 
 ---
 
-## Team
-
-**Team Name:** ChainGuard AI
-**Challenge:** Google Solution Challenge 2026
-
-| Name | Role |
-|------|------|
-| Anushka Patel | Team Lead · Full-Stack Development |
-
----
 
 ## Acknowledgements
 
