@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-const WS_URL = 'wss://chainguard-backend.onrender.com/ws/shipments'
+const WS_URL = 'wss://RouteSense-backend.onrender.com/ws/shipments'
 const RECONNECT_DELAY = 3000
 
 export function useShipmentSocket() {
