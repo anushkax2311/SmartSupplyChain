@@ -33,13 +33,13 @@
 
 Global supply chains lose **$1.5 trillion annually** to disruptions. 73% of logistics managers say their systems are **purely reactive** — they find out about delays only after they have already cascaded into missed SLAs. Indian freight loses **₹4.8 lakh crore per year** to inefficiency. Existing enterprise tools cost ₹40 lakh+/year and still cannot predict or self-heal.
 
-**ChainGuard AI solves this** with a closed-loop system that predicts disruptions before they happen, routes around them automatically, and explains every decision in plain English.
+**RouteSense solves this** with a closed-loop system that predicts disruptions before they happen, routes around them automatically, and explains every decision in plain English.
 
 ---
 
 ## Solution
 
-ChainGuard AI is a **5-phase intelligent supply chain control tower** that:
+RouteSense is a **5-phase intelligent supply chain control tower** that:
 
 - Tracks live shipments across Indian NH highway corridors in real time via WebSocket
 - Predicts delay probability, risk level, and updated ETA every 4 seconds
