@@ -56,8 +56,7 @@ ChainGuard AI is a **5-phase intelligent supply chain control tower** that:
 | Resource | Link |
 |----------|------|
 | GitHub | https://github.com/anushkax2311/SmartSupplyChain |
-| Live Prototype | https://smartsupplychain.onrender.com |
-| Demo Video | https://youtu.be/[link] |
+| Live Prototype | https://routesense-five.vercel.app/ |
 | API Docs | http://localhost:8000/docs *(run locally)* |
 
 ---
